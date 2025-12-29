@@ -1,89 +1,35 @@
-# Federated Learning with Flower and PyTorch
+# Federated Learning Prototype
 
-This project implements federated learning using Flower framework and PyTorch, following the [Flower tutorial format](https://flower.ai/docs/framework/tutorial-series-get-started-with-flower-pytorch.html).
+A federated learning implementation using CNN transfer learning with heterogeneous data distribution across multiple devices.
 
-## Project Structure
+## Overview
 
-- `model.py` - ResNet18 model definition
-- `task.py` - Training and test functions
-- `client.py` - Flower ClientApp implementation
-- `server.py` - Flower ServerApp implementation
-- `data_utils.py` - Data loading and partitioning utilities
-- `run_pipeline.py` - Complete pipeline script (pretraining + federated learning)
-- `pyproject.toml` - Flower configuration
+This project implements federated learning for image classification using a ResNet18-based CNN fine-tuned on the hymenoptera dataset (ants and bees). The system supports:
 
-## Setup
+- **Real device deployment**: Server on DGX Spark, clients on NVIDIA Orin Nano
+- **Heterogeneous data distribution**: Non-IID data splits across devices
+- **Multiple aggregation strategies**: Configurable federated aggregation algorithms
 
-1. Install dependencies:
-```bash
-pip install -e .
-```
+## Training Approach: Centralized Pretraining vs. Independent Transfer Learning
 
-2. Ensure you have the pretrained model (`pretrained_model.pt`) or it will be created automatically.
+**Option A: Centralized Pretraining Followed by Federated Learning (Implemented Approach)**
 
-## Running
+This project employs a two-phase training strategy where transfer learning is first performed centrally on the complete hymenoptera dataset to establish a robust initialization point. The pretraining phase leverages all available data (245 training samples) to train the final fully-connected layer while keeping the ImageNet-pretrained backbone frozen, resulting in a model that has learned general features for distinguishing ants from bees. All clients then begin federated learning from this shared, well-initialized model, allowing them to adapt the entire network (with all layers unfrozen) to their local heterogeneous data distributions. This approach provides superior initialization compared to training from ImageNet alone, ensures all clients share a common feature representation space that facilitates meaningful aggregation, handles data imbalance across clients more effectively, and enables faster convergence since clients can focus on adaptation rather than learning from scratch. The server aggregates these client-specific adaptations, combining knowledge learned across different data distributions into a more robust global model.
 
-### Option 1: Full Pipeline (Pretraining + Federated Learning)
-```bash
-python run_pipeline.py
-```
+**Option B: Independent Transfer Learning per Client (Alternative Approach)**
 
-### Option 2: Skip Pretraining (Use Existing Model)
-```bash
-python run_pipeline.py --skip-pretrain
-```
+An alternative approach would involve each client independently performing transfer learning from ImageNet pretrained weights using only their local data subset, followed by federated aggregation of these independently trained models. While this approach is more truly distributed from the start and may be necessary under strict privacy constraints where centralized pretraining is impossible, it suffers from several critical limitations. Each client would have insufficient data (approximately 50 samples per client) to effectively learn the task-specific features, resulting in poor initialization that aggregation cannot fully remedy. Additionally, clients would develop divergent feature representations since they learn from different subsets without a shared starting point, making aggregation less meaningful as the server attempts to average incompatible feature spaces. This approach essentially wastes the benefit of having all data available for initialization and is only recommended when data cannot be centralized or when each client has a sufficiently large dataset (hundreds or thousands of samples) to support effective independent transfer learning.
 
-### Option 3: Direct Federated Learning
-```bash
-flwr run . local-simulation
-```
+## Phase 1: Simulations on Local Clients 
 
-This will execute the simulation with 5 clients and 3 rounds as configured in `pyproject.toml`.
+Default of 5 clients, using 245 images in the training set: 124 ants, 121 bees, with an average of 49 images per client. We use `alpha=0.5` for the heterogeneity parameter which is moderately non-IID, whereby each client gets an imbalanced class distribution: e.g. Client k: ~70% ants, ~30% bees; Client k+1: ~ 30% ants, ~ 70% bees, etc. It works by using a Dirichlet distribution to split each class across clients (lower `alpha` more extreme imbalance, higher more balanced and closer to IID)
 
-## Configuration
+**Running the Simulation**: The `run_pipeline.py` script serves as a convenience wrapper that checks for the pretrained model and runs pretraining if needed, then executes `flwr run .` which reads the configuration from `pyproject.toml`. The script itself doesn't directly parse the TOML file; instead, it delegates to Flower's `flwr run .` command, which automatically reads `pyproject.toml` in the current directory, loads the configuration from `[tool.flwr.app]` and `[tool.flwr.app.config]` sections, and starts the server and clients accordingly.
 
-Edit `pyproject.toml` to adjust:
-- Number of clients (`num-supernodes`)
-- Training parameters (`num-server-rounds`, `local-epochs`, `lr`)
-- Batch size (`batch-size`)
+## Phase 2: Orin Nano Physical Edge Client 
 
-## Features
+## Phase 3: Mix of Local Simulations and Nano Edge 
 
-- **Transfer Learning**: ResNet18 pretrained on ImageNet, fine-tuned for ants/bees classification
-- **Heterogeneous Data Distribution**: Uses Dirichlet partitioner (alpha=0.5) for non-IID data splits
-- **Flower Datasets Integration**: Leverages `flwr_datasets` for efficient data partitioning
-- **Message API**: Implements Flower's Message API following quickstart-pytorch template pattern
-- **Complete Pipeline**: End-to-end workflow from pretraining to federated learning
+## Phase 4: Increase Client Dataset using Generated Images 
 
-## Pipeline Script
-
-The `run_pipeline.py` script provides a complete workflow:
-
-1. **Pretraining Phase** (optional): Trains ResNet18 with frozen backbone on full dataset
-2. **Federated Learning Phase**: Runs federated learning simulation with multiple clients
-
-### Pipeline Options
-
-```bash
-# Full pipeline with custom epochs
-python run_pipeline.py --epochs 10
-
-# Skip pretraining
-python run_pipeline.py --skip-pretrain
-
-# Custom learning rate
-python run_pipeline.py --lr 0.0005
-```
-
-## Model Architecture
-
-- **Base Model**: ResNet18 (ImageNet pretrained)
-- **Task**: Binary classification (ants vs bees)
-- **Transfer Learning**: Frozen backbone during pretraining, unfrozen during federated learning
-
-## Data
-
-The project uses the hymenoptera dataset with:
-- Training set: 245 images (124 ants, 121 bees)
-- Validation set: 153 images
-- Heterogeneous partitioning across clients using Dirichlet distribution
+## Phase 5: Object Detection
