@@ -1,274 +1,89 @@
-# Federated Learning Prototype
+# Federated Learning with Flower and PyTorch
 
-A federated learning implementation using CNN transfer learning with heterogeneous data distribution across multiple devices.
-
-## Overview
-
-This project implements federated learning for image classification using a ResNet18-based CNN fine-tuned on the hymenoptera dataset (ants and bees). The system supports:
-
-- **Real device deployment**: Server on DGX Spark, clients on NVIDIA Orin Nano
-- **Heterogeneous data distribution**: Non-IID data splits across devices
-- **Multiple aggregation strategies**: Configurable federated aggregation algorithms
-
-## Training Approach: Centralized Pretraining vs. Independent Transfer Learning
-
-**Option A: Centralized Pretraining Followed by Federated Learning (Implemented Approach)**
-
-This project employs a two-phase training strategy where transfer learning is first performed centrally on the complete hymenoptera dataset to establish a robust initialization point. The pretraining phase leverages all available data (245 training samples) to train the final fully-connected layer while keeping the ImageNet-pretrained backbone frozen, resulting in a model that has learned general features for distinguishing ants from bees. All clients then begin federated learning from this shared, well-initialized model, allowing them to adapt the entire network (with all layers unfrozen) to their local heterogeneous data distributions. This approach provides superior initialization compared to training from ImageNet alone, ensures all clients share a common feature representation space that facilitates meaningful aggregation, handles data imbalance across clients more effectively, and enables faster convergence since clients can focus on adaptation rather than learning from scratch. The server aggregates these client-specific adaptations, combining knowledge learned across different data distributions into a more robust global model.
-
-**Option B: Independent Transfer Learning per Client (Alternative Approach)**
-
-An alternative approach would involve each client independently performing transfer learning from ImageNet pretrained weights using only their local data subset, followed by federated aggregation of these independently trained models. While this approach is more truly distributed from the start and may be necessary under strict privacy constraints where centralized pretraining is impossible, it suffers from several critical limitations. Each client would have insufficient data (approximately 50 samples per client) to effectively learn the task-specific features, resulting in poor initialization that aggregation cannot fully remedy. Additionally, clients would develop divergent feature representations since they learn from different subsets without a shared starting point, making aggregation less meaningful as the server attempts to average incompatible feature spaces. This approach essentially wastes the benefit of having all data available for initialization and is only recommended when data cannot be centralized or when each client has a sufficiently large dataset (hundreds or thousands of samples) to support effective independent transfer learning.
-
-## Phase 1: Simulations on Local Clients 
-Default of 5 clients, using 245 images in the training set: 124 ants, 121 bees, with an average of 49 images per client. We use `alpha=0.5` for the heterogeneity parameter which is moderately non-IID, whereby each client gets an imbalanced class distribution: e.g. Client k: ~70% ants, ~30% bees; Client k+1: ~ 30% ants, ~ 70% bees, etc. It works by using a Dirichlet distribution to split each class across clients (lower `alpha` more extreme imbalance, higher more balanced and closer to IID)
-
-**Running the Simulation**: The `run_fl.py` script serves as a convenience wrapper that checks for the pretrained model and runs pretraining if needed, then executes `flwr run .` which reads the configuration from `pyproject.toml`. The script itself doesn't directly parse the TOML file; instead, it delegates to Flower's `flwr run .` command, which automatically reads `pyproject.toml` in the current directory, loads the configuration from `[tool.flwr.app]` and `[tool.flwr.app.config]` sections, and starts the server and clients accordingly.
-
-## Phase 2: Orin Nano Physical Edge Client 
-
-## Phase 3: Mix of Local Simulations and Nano Edge 
-
-## Phase 4: Increase Client Dataset using Generated Images 
-
-## Phase 5: Object Detection
-
-## Research: Federated Learning Aggregation Strategies
-
-**Note**: These strategies can modify different parts of the federated learning pipeline:
-- **Local Training Loss**: Modifies the loss function used during client-side training
-- **Aggregation**: Modifies how server combines client updates
-- **Server Optimization**: Modifies how server updates the global model after aggregation
-
-### 1. FedAvg (Federated Averaging)
-
-**Type**: Aggregation Strategy
-
-**Algorithm**: Weighted average of client model updates
-- **Formula**: $w_{global} = \frac{\sum_{i=1}^{n} n_i \cdot w_i}{\sum_{i=1}^{n} n_i}$
-- Where $n_i$ is the number of samples on client $i$ and $w_i$ is the model weights from client $i$
-
-**Characteristics**:
-- Simple and widely adopted
-- Works well with IID (independent and identically distributed) data
-- Standard baseline for federated learning
-- Assumes all clients participate equally
-- **Only modifies aggregation**, not local training
-
-**Use Case**: Baseline approach, good starting point for homogeneous data distributions
-
-**References**:
-- McMahan, B., et al. (2017). "Communication-Efficient Learning of Deep Networks from Decentralized Data." AISTATS.
-
----
-
-### 2. FedProx (Federated Proximal)
-
-**Type**: Local Training Loss Modification + Aggregation
-
-**Algorithm**: Adds a proximal term to local loss function to prevent client drift
-- **Local Loss**: $L_{local} = L_{original} + \frac{\mu}{2} \|w - w_{global}\|^2$
-- Where $\mu$ is the proximal parameter controlling regularization strength
-- Uses standard FedAvg for aggregation
-
-**Characteristics**:
-- Better convergence with heterogeneous (non-IID) data
-- Reduces client drift by keeping local updates close to global model
-- More stable training with varying client data distributions
-- Requires tuning of $\mu$ parameter
-- **Modifies local training loss** (adds regularization term)
-
-**Use Case**: Non-IID data distributions, heterogeneous client capabilities
-
-**References**:
-- Li, T., et al. (2020). "Federated Optimization in Heterogeneous Networks." MLSys.
-
----
-
-### 3. FedNova (Normalized Averaging)
-
-**Type**: Aggregation Strategy
-
-**Algorithm**: Normalizes local updates by the number of local training steps
-- **Formula**: $w_{global} = \frac{\sum_{i=1}^{n} \tau_i \cdot w_i}{\sum_{i=1}^{n} \tau_i}$
-- Where $\tau_i$ is the number of local epochs/steps for client $i$
-
-**Characteristics**:
-- Handles clients with different numbers of local training epochs
-- More fair aggregation when clients train for varying durations
-- Better convergence when client compute capabilities differ
-- Accounts for training effort differences
-- **Only modifies aggregation** (normalization step)
-
-**Use Case**: Clients with varying compute capabilities, different local epoch counts
-
-**References**:
-- Wang, J., et al. (2020). "Tackling the Objective Inconsistency Problem in Heterogeneous Federated Optimization." NeurIPS.
-
----
-
-### 4. FedOpt (Federated Optimization)
-
-**Type**: Server Optimization Strategy
-
-**Algorithm**: Uses adaptive optimizers (Adam, AdamW) on server instead of simple averaging
-- **Server Update**: Uses Adam/AdamW optimizer to update global model
-- Combines client updates using adaptive learning rates
-- Clients still use standard local training (e.g., SGD with cross-entropy loss)
-
-**Characteristics**:
-- Faster convergence compared to FedAvg
-- Better handling of non-convex optimization landscapes
-- More compute-intensive on server side
-- Requires tuning optimizer hyperparameters
-- **Modifies server-side optimization**, not local training loss or aggregation
-
-**Use Case**: Faster convergence needed, non-convex loss landscapes
-
-**References**:
-- Reddi, S., et al. (2021). "Adaptive Federated Optimization." ICLR.
-
----
-
-### 5. Scaffold (Stochastic Controlled Average)
-
-**Type**: Local Training Loss Modification + Aggregation
-
-**Algorithm**: Maintains control variates to correct for client drift
-- **Control Variates**: $c_i$ per client, $c$ global
-- **Client Update**: $w_i^{t+1} = w_i^t - \eta (g_i^t + c - c_i)$
-- **Server Update**: Aggregates with control variate corrections
-
-**Characteristics**:
-- Excellent for highly non-IID data
-- Reduces variance in client updates
-- Requires maintaining additional state (control variates)
-- More complex implementation
-- **Modifies local training** (adds control variate correction to gradients)
-
-**Use Case**: Highly heterogeneous data, significant client drift issues
-
-**References**:
-- Karimireddy, S. P., et al. (2020). "SCAFFOLD: Stochastic Controlled Averaging for Federated Learning." ICML.
-
----
-
-### 6. FedAvgM (FedAvg with Momentum)
-
-**Type**: Aggregation Strategy
-
-**Algorithm**: Adds momentum to server-side aggregation
-- **Momentum Update**: $v_t = \beta v_{t-1} + (1-\beta) \Delta w_t$
-- **Model Update**: $w_{t+1} = w_t + v_t$
-
-**Characteristics**:
-- Simple extension of FedAvg
-- Can improve convergence speed
-- Smooths out update variations
-- Minimal additional complexity
-- **Only modifies aggregation** (adds momentum term)
-
-**Use Case**: Quick improvement over FedAvg, smoother convergence
-
----
-
-## Strategy Classification
-
-| Strategy | Modifies Local Loss | Modifies Aggregation | Modifies Server Optimization |
-|----------|-------------------|---------------------|----------------------------|
-| FedAvg   | ❌                | ✅                  | ❌                          |
-| FedProx  | ✅                | ✅ (FedAvg)         | ❌                          |
-| FedNova  | ❌                | ✅                  | ❌                          |
-| FedOpt   | ❌                | ✅ (implicit)        | ✅                          |
-| Scaffold | ✅                | ✅                  | ❌                          |
-| FedAvgM  | ❌                | ✅                  | ❌                          |
-
-## Comparison Matrix
-
-| Strategy | Non-IID Performance | Complexity | Convergence Speed | Server Compute |
-|----------|-------------------|------------|-------------------|----------------|
-| FedAvg   | Low               | Low        | Medium            | Low            |
-| FedProx  | High              | Medium     | Medium            | Low            |
-| FedNova  | Medium            | Low        | Medium            | Low            |
-| FedOpt   | Medium            | Medium     | High              | Medium         |
-| Scaffold | Very High         | High       | High              | Low            |
-| FedAvgM  | Low               | Low        | Medium-High       | Low            |
-
-## Recommended Strategy Selection
-
-### For This Project (Heterogeneous Hymenoptera Data):
-
-1. **Start with FedAvg**: Establish baseline performance
-2. **Try FedProx**: If convergence is slow or accuracy is low (likely with non-IID data) - modifies local loss to reduce drift
-3. **Consider FedNova**: If clients train for different numbers of epochs
-4. **Try FedOpt**: For faster convergence - uses adaptive server optimization
-5. **Advanced: Scaffold**: If highly heterogeneous data causes significant issues - modifies local training with control variates
-
-## Implementation Notes
-
-- All strategies can be implemented using Flower framework
-- Custom strategies can be created by subclassing `flwr.server.strategy.Strategy`
-- Override `aggregate_fit()` method for custom aggregation logic
-- For strategies that modify local loss (FedProx, Scaffold), you'll need to customize the client training function
-- For server optimization (FedOpt), implement custom server-side optimizer
-- Monitor convergence metrics to select optimal strategy
-
-## Loss Functions
-
-The base loss function used during local training is separate from aggregation strategies:
-
-- **Cross-Entropy Loss**: Standard for classification tasks (used by all strategies)
-- **Focal Loss**: Handles class imbalance (if needed)
-- **Label Smoothing**: Regularization technique
-
-**Note**: Some aggregation strategies (FedProx, Scaffold) modify this base loss by adding regularization or correction terms.
-
-## Communication Protocol
-
-Each federated round follows this protocol:
-
-1. **Server Selection**: Server selects participating clients
-2. **Model Broadcast**: Server sends global model to selected clients
-3. **Local Training**: Each client trains on local data
-   - Uses base loss function (e.g., Cross-Entropy)
-   - May apply strategy-specific loss modifications (FedProx, Scaffold)
-4. **Update Upload**: Clients send weight updates to server
-5. **Aggregation**: Server aggregates updates using chosen strategy
-6. **Server Update**: Server updates global model
-   - Simple averaging (FedAvg, FedProx, FedNova, Scaffold, FedAvgM)
-   - Adaptive optimization (FedOpt)
-7. **Repeat**: Process repeats for specified number of rounds
-
-## References
-
-- McMahan, B., Moore, E., Ramage, D., Hampson, S., & y Arcas, B. A. (2017). Communication-efficient learning of deep networks from decentralized data. AISTATS.
-- Li, T., Sahu, A. K., Zaheer, M., Sanjabi, M., Talwalkar, A., & Smith, V. (2020). Federated optimization in heterogeneous networks. MLSys.
-- Wang, J., Liu, Q., Liang, H., Joshi, G., & Poor, H. V. (2020). Tackling the objective inconsistency problem in heterogeneous federated optimization. NeurIPS.
-- Reddi, S., Charles, Z., Zaheer, M., Garrett, Z., Rush, K., Konečný, J., ... & McMahan, B. (2021). Adaptive federated optimization. ICLR.
-- Karimireddy, S. P., Kale, S., Mohri, M., Reddi, S., Stich, S., & Suresh, A. T. (2020). SCAFFOLD: Stochastic controlled averaging for federated learning. ICML.
+This project implements federated learning using Flower framework and PyTorch, following the [Flower tutorial format](https://flower.ai/docs/framework/tutorial-series-get-started-with-flower-pytorch.html).
 
 ## Project Structure
 
-```
-fed-learning-prototype/
-├── README.md                 # This file
-├── server.py                 # Federated learning server (DGX Spark)
-├── client.py                 # Federated learning client (Orin Nano)
-├── model.py                  # CNN model architecture (ResNet18)
-├── data_utils.py             # Data loading and heterogeneous partitioning
-├── strategies.py             # Custom aggregation strategies
-├── requirements.txt          # Python dependencies
-└── config.yaml               # Configuration file
-```
+- `model.py` - ResNet18 model definition
+- `task.py` - Training and test functions
+- `client.py` - Flower ClientApp implementation
+- `server.py` - Flower ServerApp implementation
+- `data_utils.py` - Data loading and partitioning utilities
+- `run_pipeline.py` - Complete pipeline script (pretraining + federated learning)
+- `pyproject.toml` - Flower configuration
 
 ## Setup
 
-(To be added)
+1. Install dependencies:
+```bash
+pip install -e .
+```
 
-## Usage
+2. Ensure you have the pretrained model (`pretrained_model.pt`) or it will be created automatically.
 
-(To be added)
+## Running
 
-## Results
+### Option 1: Full Pipeline (Pretraining + Federated Learning)
+```bash
+python run_pipeline.py
+```
 
-(To be added)
+### Option 2: Skip Pretraining (Use Existing Model)
+```bash
+python run_pipeline.py --skip-pretrain
+```
+
+### Option 3: Direct Federated Learning
+```bash
+flwr run . local-simulation
+```
+
+This will execute the simulation with 5 clients and 3 rounds as configured in `pyproject.toml`.
+
+## Configuration
+
+Edit `pyproject.toml` to adjust:
+- Number of clients (`num-supernodes`)
+- Training parameters (`num-server-rounds`, `local-epochs`, `lr`)
+- Batch size (`batch-size`)
+
+## Features
+
+- **Transfer Learning**: ResNet18 pretrained on ImageNet, fine-tuned for ants/bees classification
+- **Heterogeneous Data Distribution**: Uses Dirichlet partitioner (alpha=0.5) for non-IID data splits
+- **Flower Datasets Integration**: Leverages `flwr_datasets` for efficient data partitioning
+- **Message API**: Implements Flower's Message API following quickstart-pytorch template pattern
+- **Complete Pipeline**: End-to-end workflow from pretraining to federated learning
+
+## Pipeline Script
+
+The `run_pipeline.py` script provides a complete workflow:
+
+1. **Pretraining Phase** (optional): Trains ResNet18 with frozen backbone on full dataset
+2. **Federated Learning Phase**: Runs federated learning simulation with multiple clients
+
+### Pipeline Options
+
+```bash
+# Full pipeline with custom epochs
+python run_pipeline.py --epochs 10
+
+# Skip pretraining
+python run_pipeline.py --skip-pretrain
+
+# Custom learning rate
+python run_pipeline.py --lr 0.0005
+```
+
+## Model Architecture
+
+- **Base Model**: ResNet18 (ImageNet pretrained)
+- **Task**: Binary classification (ants vs bees)
+- **Transfer Learning**: Frozen backbone during pretraining, unfrozen during federated learning
+
+## Data
+
+The project uses the hymenoptera dataset with:
+- Training set: 245 images (124 ants, 121 bees)
+- Validation set: 153 images
+- Heterogeneous partitioning across clients using Dirichlet distribution
