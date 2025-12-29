@@ -10,6 +10,16 @@ This project implements federated learning for image classification using a ResN
 - **Heterogeneous data distribution**: Non-IID data splits across devices
 - **Multiple aggregation strategies**: Configurable federated aggregation algorithms
 
+## Training Approach: Centralized Pretraining vs. Independent Transfer Learning
+
+**Option A: Centralized Pretraining Followed by Federated Learning (Implemented Approach)**
+
+This project employs a two-phase training strategy where transfer learning is first performed centrally on the complete hymenoptera dataset to establish a robust initialization point. The pretraining phase leverages all available data (245 training samples) to train the final fully-connected layer while keeping the ImageNet-pretrained backbone frozen, resulting in a model that has learned general features for distinguishing ants from bees. All clients then begin federated learning from this shared, well-initialized model, allowing them to adapt the entire network (with all layers unfrozen) to their local heterogeneous data distributions. This approach provides superior initialization compared to training from ImageNet alone, ensures all clients share a common feature representation space that facilitates meaningful aggregation, handles data imbalance across clients more effectively, and enables faster convergence since clients can focus on adaptation rather than learning from scratch. The server aggregates these client-specific adaptations, combining knowledge learned across different data distributions into a more robust global model.
+
+**Option B: Independent Transfer Learning per Client (Alternative Approach)**
+
+An alternative approach would involve each client independently performing transfer learning from ImageNet pretrained weights using only their local data subset, followed by federated aggregation of these independently trained models. While this approach is more truly distributed from the start and may be necessary under strict privacy constraints where centralized pretraining is impossible, it suffers from several critical limitations. Each client would have insufficient data (approximately 50 samples per client) to effectively learn the task-specific features, resulting in poor initialization that aggregation cannot fully remedy. Additionally, clients would develop divergent feature representations since they learn from different subsets without a shared starting point, making aggregation less meaningful as the server attempts to average incompatible feature spaces. This approach essentially wastes the benefit of having all data available for initialization and is only recommended when data cannot be centralized or when each client has a sufficiently large dataset (hundreds or thousands of samples) to support effective independent transfer learning.
+
 ## Research: Federated Learning Aggregation Strategies
 
 **Note**: These strategies can modify different parts of the federated learning pipeline:
