@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fed-learning-prototype"
+version = "0.1.0"
+description = "Federated Learning with ResNet18"
+license = "Apache-2.0"
+requires-python = ">=3.8"
+dependencies = [
+    "flwr[simulation]>=1.20.0",
+    "flwr-datasets>=0.5.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "numpy>=1.21.0",
+    "datasets>=2.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.flwr.app]
+publisher = "nudro"
+
+[tool.flwr.app.components]
+serverapp = "server:app"
+clientapp = "client:app"
+
+[tool.flwr.app.config]
+num-server-rounds = 3
+pretrained-model = "./pretrained_model.pt"
+local-epochs = 1
+lr = 0.001
+batch-size = 4
+fraction-evaluate = 1.0
+
+[tool.flwr.federations]
+default = "local-simulation"
+
+[tool.flwr.federations.local-simulation]
+options.num-supernodes = 5

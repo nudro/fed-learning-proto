@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Model files (large binaries - uncomment if you don't want to commit)
+# *.pt
+# pretrained_model.pt
+# final_model.pt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/tmp/
+
+# Environment
+.env
+.venv
+env/
+venv/
