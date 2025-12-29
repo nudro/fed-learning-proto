@@ -25,6 +25,104 @@ The implementation extends the quickstart template by adding:
 - Complete pretraining pipeline before federated learning
 - Support for real edge device deployment
 
+## Usage
+
+### Setup
+
+1. Install dependencies:
+```bash
+pip install -e .
+```
+
+2. Ensure you have the hymenoptera dataset in `./hymenoptera_data/` directory with `train/` and `val/` subdirectories.
+
+### Running the Complete Pipeline
+
+The `run_pipeline.py` script provides a complete workflow that combines transfer learning pretraining with federated learning.
+
+#### Option 1: Full Pipeline (Pretraining + Federated Learning)
+
+Run the complete pipeline starting with transfer learning pretraining, then federated learning:
+
+```bash
+python run_pipeline.py
+```
+
+This will:
+1. Train ResNet18 with frozen backbone on the full hymenoptera dataset (25 epochs by default)
+2. Save the pretrained model to `pretrained_model.pt`
+3. Run federated learning simulation with 5 clients for 3 rounds
+
+#### Option 2: Skip Pretraining (Use Existing Model)
+
+If you already have a pretrained model, skip the pretraining step and go directly to federated learning:
+
+```bash
+python run_pipeline.py --skip-pretrain
+```
+
+This will:
+1. Check for `pretrained_model.pt` (uses it if found, otherwise falls back to ImageNet weights)
+2. Run federated learning simulation immediately
+
+#### Option 3: Custom Pretraining Parameters
+
+Customize the pretraining phase with different hyperparameters:
+
+```bash
+# Custom number of epochs
+python run_pipeline.py --epochs 10
+
+# Custom learning rate and batch size
+python run_pipeline.py --epochs 15 --lr 0.0005 --batch-size 8
+
+# Full custom configuration
+python run_pipeline.py --epochs 20 --lr 0.001 --batch-size 4 --workers 2
+```
+
+#### Option 4: Direct Federated Learning (Without Pipeline Script)
+
+Run federated learning directly using Flower's CLI:
+
+```bash
+flwr run . local-simulation
+```
+
+This reads configuration from `pyproject.toml` and runs federated learning with the settings specified there (5 clients, 3 rounds by default).
+
+### Pipeline Script Options
+
+The `run_pipeline.py` script supports the following command-line arguments:
+
+**Pretraining Options:**
+- `--skip-pretrain`: Skip pretraining step and go directly to federated learning
+- `--epochs N`: Number of pretraining epochs (default: 25)
+- `--batch-size N`: Batch size for pretraining (default: 4)
+- `--lr FLOAT`: Learning rate for pretraining (default: 0.001)
+- `--workers N`: Number of data loading workers (default: 4)
+- `--data-dir PATH`: Path to hymenoptera_data directory (default: ./hymenoptera_data)
+- `--checkpoint PATH`: Path to save/load pretrained model (default: ./pretrained_model.pt)
+
+**Information Options:**
+- `--num-clients N`: Display number of clients (from pyproject.toml, default: 5)
+- `--num-rounds N`: Display number of rounds (from pyproject.toml, default: 3)
+
+### Examples
+
+```bash
+# Quick test: 10 epochs pretraining, then FL
+python run_pipeline.py --epochs 10
+
+# Use existing model, run FL only
+python run_pipeline.py --skip-pretrain
+
+# Full pipeline with custom pretraining
+python run_pipeline.py --epochs 30 --lr 0.0005 --batch-size 8
+
+# Direct FL run (bypasses pipeline script)
+flwr run . local-simulation
+```
+
 ## Training Approach: Centralized Pretraining vs. Independent Transfer Learning
 
 **Option A: Centralized Pretraining Followed by Federated Learning (Implemented Approach)**
