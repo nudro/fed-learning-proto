@@ -12,7 +12,14 @@ This project implements federated learning for image classification using a ResN
 
 ## Research: Federated Learning Aggregation Strategies
 
+**Note**: These strategies can modify different parts of the federated learning pipeline:
+- **Local Training Loss**: Modifies the loss function used during client-side training
+- **Aggregation**: Modifies how server combines client updates
+- **Server Optimization**: Modifies how server updates the global model after aggregation
+
 ### 1. FedAvg (Federated Averaging)
+
+**Type**: Aggregation Strategy
 
 **Algorithm**: Weighted average of client model updates
 - **Formula**: $w_{global} = \frac{\sum_{i=1}^{n} n_i \cdot w_i}{\sum_{i=1}^{n} n_i}$
@@ -23,6 +30,7 @@ This project implements federated learning for image classification using a ResN
 - Works well with IID (independent and identically distributed) data
 - Standard baseline for federated learning
 - Assumes all clients participate equally
+- **Only modifies aggregation**, not local training
 
 **Use Case**: Baseline approach, good starting point for homogeneous data distributions
 
@@ -33,15 +41,19 @@ This project implements federated learning for image classification using a ResN
 
 ### 2. FedProx (Federated Proximal)
 
+**Type**: Local Training Loss Modification + Aggregation
+
 **Algorithm**: Adds a proximal term to local loss function to prevent client drift
 - **Local Loss**: $L_{local} = L_{original} + \frac{\mu}{2} \|w - w_{global}\|^2$
 - Where $\mu$ is the proximal parameter controlling regularization strength
+- Uses standard FedAvg for aggregation
 
 **Characteristics**:
 - Better convergence with heterogeneous (non-IID) data
 - Reduces client drift by keeping local updates close to global model
 - More stable training with varying client data distributions
 - Requires tuning of $\mu$ parameter
+- **Modifies local training loss** (adds regularization term)
 
 **Use Case**: Non-IID data distributions, heterogeneous client capabilities
 
@@ -52,6 +64,8 @@ This project implements federated learning for image classification using a ResN
 
 ### 3. FedNova (Normalized Averaging)
 
+**Type**: Aggregation Strategy
+
 **Algorithm**: Normalizes local updates by the number of local training steps
 - **Formula**: $w_{global} = \frac{\sum_{i=1}^{n} \tau_i \cdot w_i}{\sum_{i=1}^{n} \tau_i}$
 - Where $\tau_i$ is the number of local epochs/steps for client $i$
@@ -61,6 +75,7 @@ This project implements federated learning for image classification using a ResN
 - More fair aggregation when clients train for varying durations
 - Better convergence when client compute capabilities differ
 - Accounts for training effort differences
+- **Only modifies aggregation** (normalization step)
 
 **Use Case**: Clients with varying compute capabilities, different local epoch counts
 
@@ -71,15 +86,19 @@ This project implements federated learning for image classification using a ResN
 
 ### 4. FedOpt (Federated Optimization)
 
+**Type**: Server Optimization Strategy
+
 **Algorithm**: Uses adaptive optimizers (Adam, AdamW) on server instead of simple averaging
 - **Server Update**: Uses Adam/AdamW optimizer to update global model
 - Combines client updates using adaptive learning rates
+- Clients still use standard local training (e.g., SGD with cross-entropy loss)
 
 **Characteristics**:
 - Faster convergence compared to FedAvg
 - Better handling of non-convex optimization landscapes
 - More compute-intensive on server side
 - Requires tuning optimizer hyperparameters
+- **Modifies server-side optimization**, not local training loss or aggregation
 
 **Use Case**: Faster convergence needed, non-convex loss landscapes
 
@@ -89,6 +108,8 @@ This project implements federated learning for image classification using a ResN
 ---
 
 ### 5. Scaffold (Stochastic Controlled Average)
+
+**Type**: Local Training Loss Modification + Aggregation
 
 **Algorithm**: Maintains control variates to correct for client drift
 - **Control Variates**: $c_i$ per client, $c$ global
@@ -100,6 +121,7 @@ This project implements federated learning for image classification using a ResN
 - Reduces variance in client updates
 - Requires maintaining additional state (control variates)
 - More complex implementation
+- **Modifies local training** (adds control variate correction to gradients)
 
 **Use Case**: Highly heterogeneous data, significant client drift issues
 
@@ -110,6 +132,8 @@ This project implements federated learning for image classification using a ResN
 
 ### 6. FedAvgM (FedAvg with Momentum)
 
+**Type**: Aggregation Strategy
+
 **Algorithm**: Adds momentum to server-side aggregation
 - **Momentum Update**: $v_t = \beta v_{t-1} + (1-\beta) \Delta w_t$
 - **Model Update**: $w_{t+1} = w_t + v_t$
@@ -119,10 +143,22 @@ This project implements federated learning for image classification using a ResN
 - Can improve convergence speed
 - Smooths out update variations
 - Minimal additional complexity
+- **Only modifies aggregation** (adds momentum term)
 
 **Use Case**: Quick improvement over FedAvg, smoother convergence
 
 ---
+
+## Strategy Classification
+
+| Strategy | Modifies Local Loss | Modifies Aggregation | Modifies Server Optimization |
+|----------|-------------------|---------------------|----------------------------|
+| FedAvg   | ❌                | ✅                  | ❌                          |
+| FedProx  | ✅                | ✅ (FedAvg)         | ❌                          |
+| FedNova  | ❌                | ✅                  | ❌                          |
+| FedOpt   | ❌                | ✅ (implicit)        | ✅                          |
+| Scaffold | ✅                | ✅                  | ❌                          |
+| FedAvgM  | ❌                | ✅                  | ❌                          |
 
 ## Comparison Matrix
 
@@ -140,24 +176,29 @@ This project implements federated learning for image classification using a ResN
 ### For This Project (Heterogeneous Hymenoptera Data):
 
 1. **Start with FedAvg**: Establish baseline performance
-2. **Try FedProx**: If convergence is slow or accuracy is low (likely with non-IID data)
+2. **Try FedProx**: If convergence is slow or accuracy is low (likely with non-IID data) - modifies local loss to reduce drift
 3. **Consider FedNova**: If clients train for different numbers of epochs
-4. **Advanced: Scaffold**: If highly heterogeneous data causes significant issues
+4. **Try FedOpt**: For faster convergence - uses adaptive server optimization
+5. **Advanced: Scaffold**: If highly heterogeneous data causes significant issues - modifies local training with control variates
 
 ## Implementation Notes
 
 - All strategies can be implemented using Flower framework
 - Custom strategies can be created by subclassing `flwr.server.strategy.Strategy`
 - Override `aggregate_fit()` method for custom aggregation logic
+- For strategies that modify local loss (FedProx, Scaffold), you'll need to customize the client training function
+- For server optimization (FedOpt), implement custom server-side optimizer
 - Monitor convergence metrics to select optimal strategy
 
 ## Loss Functions
 
-The loss function used during local training is separate from aggregation:
+The base loss function used during local training is separate from aggregation strategies:
 
-- **Cross-Entropy Loss**: Standard for classification tasks
+- **Cross-Entropy Loss**: Standard for classification tasks (used by all strategies)
 - **Focal Loss**: Handles class imbalance (if needed)
 - **Label Smoothing**: Regularization technique
+
+**Note**: Some aggregation strategies (FedProx, Scaffold) modify this base loss by adding regularization or correction terms.
 
 ## Communication Protocol
 
@@ -165,10 +206,14 @@ Each federated round follows this protocol:
 
 1. **Server Selection**: Server selects participating clients
 2. **Model Broadcast**: Server sends global model to selected clients
-3. **Local Training**: Each client trains on local data (using chosen loss function)
+3. **Local Training**: Each client trains on local data
+   - Uses base loss function (e.g., Cross-Entropy)
+   - May apply strategy-specific loss modifications (FedProx, Scaffold)
 4. **Update Upload**: Clients send weight updates to server
 5. **Aggregation**: Server aggregates updates using chosen strategy
-6. **Model Update**: Server updates global model
+6. **Server Update**: Server updates global model
+   - Simple averaging (FedAvg, FedProx, FedNova, Scaffold, FedAvgM)
+   - Adaptive optimization (FedOpt)
 7. **Repeat**: Process repeats for specified number of rounds
 
 ## References
