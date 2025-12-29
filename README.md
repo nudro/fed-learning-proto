@@ -20,6 +20,19 @@ This project employs a two-phase training strategy where transfer learning is fi
 
 An alternative approach would involve each client independently performing transfer learning from ImageNet pretrained weights using only their local data subset, followed by federated aggregation of these independently trained models. While this approach is more truly distributed from the start and may be necessary under strict privacy constraints where centralized pretraining is impossible, it suffers from several critical limitations. Each client would have insufficient data (approximately 50 samples per client) to effectively learn the task-specific features, resulting in poor initialization that aggregation cannot fully remedy. Additionally, clients would develop divergent feature representations since they learn from different subsets without a shared starting point, making aggregation less meaningful as the server attempts to average incompatible feature spaces. This approach essentially wastes the benefit of having all data available for initialization and is only recommended when data cannot be centralized or when each client has a sufficiently large dataset (hundreds or thousands of samples) to support effective independent transfer learning.
 
+## Phase 1: Simulations on Local Clients 
+Default of 5 clients, using 245 images in the training set: 124 ants, 121 bees, with an average of 49 images per client. We use `alpha=0.5` for the heterogeneity parameter which is moderately non-IID, whereby each client gets an imbalanced class distribution: e.g. Client k: ~70% ants, ~30% bees; Client k+1: ~ 30% ants, ~ 70% bees, etc. It works by using a Dirichlet distribution to split each class across clients (lower `alpha` more extreme imbalance, higher more balanced and closer to IID)
+
+**Running the Simulation**: The `run_fl.py` script serves as a convenience wrapper that checks for the pretrained model and runs pretraining if needed, then executes `flwr run .` which reads the configuration from `pyproject.toml`. The script itself doesn't directly parse the TOML file; instead, it delegates to Flower's `flwr run .` command, which automatically reads `pyproject.toml` in the current directory, loads the configuration from `[tool.flwr.app]` and `[tool.flwr.app.config]` sections, and starts the server and clients accordingly.
+
+## Phase 2: Orin Nano Physical Edge Client 
+
+## Phase 3: Mix of Local Simulations and Nano Edge 
+
+## Phase 4: Increase Client Dataset using Generated Images 
+
+## Phase 5: Object Detection
+
 ## Research: Federated Learning Aggregation Strategies
 
 **Note**: These strategies can modify different parts of the federated learning pipeline:
