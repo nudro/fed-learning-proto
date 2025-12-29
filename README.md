@@ -10,6 +10,21 @@ This project implements federated learning for image classification using a ResN
 - **Heterogeneous data distribution**: Non-IID data splits across devices
 - **Multiple aggregation strategies**: Configurable federated aggregation algorithms
 
+## Implementation
+
+This project closely follows the [Flower PyTorch Quickstart Tutorial](https://flower.ai/docs/framework/tutorial-series-get-started-with-flower-pytorch.html), implementing the Message API pattern with `ClientApp` and `ServerApp` components. The code structure matches the quickstart template, using:
+
+- `@app.train()` and `@app.evaluate()` decorators for client functions
+- `Message` objects with `RecordDict` containing `ArrayRecord`, `MetricRecord`, and `ConfigRecord`
+- `@app.main()` pattern for `ServerApp` with `Grid` and `strategy.start()`
+- `pyproject.toml` configuration following Flower's standard format
+
+The implementation extends the quickstart template by adding:
+- Transfer learning with ResNet18 (instead of a simple CNN)
+- Heterogeneous data partitioning using `flwr_datasets` with Dirichlet distribution
+- Complete pretraining pipeline before federated learning
+- Support for real edge device deployment
+
 ## Training Approach: Centralized Pretraining vs. Independent Transfer Learning
 
 **Option A: Centralized Pretraining Followed by Federated Learning (Implemented Approach)**
